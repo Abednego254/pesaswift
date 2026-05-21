@@ -394,7 +394,7 @@ export default function UnifiedDashboard() {
                     required
                   />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div className="responsive-form-grid">
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-input-label">Full Name</label>
                     <input 
@@ -463,7 +463,7 @@ export default function UnifiedDashboard() {
 
               {error && <span className="error-message">⚠️ {error}</span>}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px', marginTop: '10px' }}>
+              <div className="responsive-action-grid">
                 <button type="button" className="btn-secondary" onClick={() => setCurrentStep(1)}>
                   Back
                 </button>

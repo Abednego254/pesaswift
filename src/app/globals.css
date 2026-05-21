@@ -820,3 +820,112 @@ html.dark .modal-overlay {
   font-family: var(--font-sans);
 }
 
+/* Grids & Layout Adaptations */
+.responsive-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.responsive-action-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+@media (max-width: 500px) {
+  .responsive-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .responsive-action-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Responsive navigation and page spacing */
+@media (max-width: 768px) {
+  .minimal-nav {
+    padding: 12px 16px;
+  }
+  .terminal-status-light span:last-child {
+    display: none; /* Hide status label, keep pulse green dot */
+  }
+  .terminal-heading {
+    font-size: 2rem !important;
+  }
+  .contract-breakdown-card {
+    padding: 20px !important;
+  }
+  .contract-value-large {
+    font-size: 1.8rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .workspace-container {
+    padding: 16px !important;
+    gap: 20px !important;
+  }
+  .workspace-hub {
+    padding: 24px 16px !important;
+  }
+  .terminal-heading {
+    font-size: 1.75rem !important;
+  }
+  .tier-selector-grid {
+    gap: 8px !important;
+  }
+  .tier-card-btn {
+    padding: 12px !important;
+  }
+  .tier-amount {
+    font-size: 1rem !important;
+  }
+}
+
+/* CSS Confetti Animations */
+.confetti-container {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 10;
+  overflow: hidden;
+}
+
+.confetti {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  opacity: 0;
+  animation: fall 4s infinite linear;
+}
+
+.piece-0 { left: 5%; background-color: #00F2FE; animation-delay: 0.2s; animation-duration: 3.2s; }
+.piece-1 { left: 10%; background-color: #8B5CF6; animation-delay: 0.9s; animation-duration: 4.1s; }
+.piece-2 { left: 15%; background-color: #10B981; animation-delay: 1.4s; animation-duration: 3.5s; }
+.piece-3 { left: 20%; background-color: #F59E0B; animation-delay: 2.1s; animation-duration: 4.8s; }
+.piece-4 { left: 25%; background-color: #00F2FE; animation-delay: 0.5s; animation-duration: 3.9s; }
+.piece-5 { left: 30%; background-color: #8B5CF6; animation-delay: 1.8s; animation-duration: 4.3s; }
+.piece-6 { left: 35%; background-color: #10B981; animation-delay: 2.5s; animation-duration: 3.1s; }
+.piece-7 { left: 40%; background-color: #F59E0B; animation-delay: 0.1s; animation-duration: 4.5s; }
+.piece-8 { left: 45%; background-color: #00F2FE; animation-delay: 1.2s; animation-duration: 3.7s; }
+.piece-9 { left: 50%; background-color: #8B5CF6; animation-delay: 2.8s; animation-duration: 4.0s; }
+.piece-10 { left: 55%; background-color: #10B981; animation-delay: 0.6s; animation-duration: 3.3s; }
+.piece-11 { left: 60%; background-color: #F59E0B; animation-delay: 1.9s; animation-duration: 4.6s; }
+.piece-12 { left: 65%; background-color: #00F2FE; animation-delay: 2.3s; animation-duration: 3.8s; }
+.piece-13 { left: 70%; background-color: #8B5CF6; animation-delay: 0.4s; animation-duration: 4.2s; }
+.piece-14 { left: 75%; background-color: #10B981; animation-delay: 1.5s; animation-duration: 3.4s; }
+.piece-15 { left: 80%; background-color: #F59E0B; animation-delay: 2.9s; animation-duration: 4.7s; }
+.piece-16 { left: 85%; background-color: #00F2FE; animation-delay: 0.8s; animation-duration: 3.6s; }
+.piece-17 { left: 90%; background-color: #8B5CF6; animation-delay: 1.1s; animation-duration: 4.4s; }
+.piece-18 { left: 95%; background-color: #10B981; animation-delay: 2.6s; animation-duration: 3.2s; }
+.piece-19 { left: 98%; background-color: #F59E0B; animation-delay: 0.3s; animation-duration: 4.9s; }
+
+@keyframes fall {
+  0% { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(500px) rotate(360deg); opacity: 0; }
+}
+
+
