@@ -1,0 +1,25 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             Int      @id @default(autoincrement())
+  trackingId     String?  @unique
+  name           String
+  idNumber       String
+  mpesaNumber    String
+  loanType       String   @default("Personal Loan")
+  requestedAmt   Float?
+  qualifiedAmt   Float?
+  interestRate   Float    @default(10.0)
+  repaymentPeriod Int     @default(1)
+  verificationFee Float   @default(95.0)
+  status         String   @default("PENDING")
+  checkoutRequestId String? @unique
+  createdAt      DateTime @default(now())
+}
