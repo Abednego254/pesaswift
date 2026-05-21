@@ -30,27 +30,22 @@ export default function ThemeToggle() {
     <button 
       onClick={toggleTheme}
       style={{
-        position: 'fixed',
-        top: '20px',
-        right: '20px',
-        zIndex: 1000,
-        padding: '10px 18px',
+        padding: '8px 16px',
         borderRadius: '30px',
         border: '1px solid var(--border-color)',
-        background: 'var(--glass-bg)',
+        background: 'var(--panel-bg)',
         color: 'var(--text-primary)',
         cursor: 'pointer',
         fontSize: '0.85rem',
         fontWeight: '600',
         backdropFilter: 'blur(10px)',
-        boxShadow: 'var(--shadow-sm)',
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
         fontFamily: 'inherit',
         transition: 'all 0.2s ease'
       }}
-      className="hover-lift"
+      className="theme-toggle hover-lift"
     >
       <span>{isDark ? '🌙 Midnight Cyberpunk' : '☀️ Eco Emerald'}</span>
     </button>
