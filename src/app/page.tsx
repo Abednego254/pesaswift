@@ -394,6 +394,21 @@ export default function UnifiedDashboard() {
                     required
                   />
                 </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-input-label">Loan Classification</label>
+                  <select 
+                    className="form-input"
+                    value={formData.loanType}
+                    onChange={(e) => { setFormData({ ...formData, loanType: e.target.value }); setError(null); }}
+                    required
+                  >
+                    <option value="Emergency Loan">Emergency Loan</option>
+                    <option value="Personal Loan">Personal Loan</option>
+                    <option value="Business Loan">Business Loan</option>
+                    <option value="Educational Loan">Educational Loan</option>
+                    <option value="Car Loan">Car Loan</option>
+                  </select>
+                </div>
                 <div className="responsive-form-grid">
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-input-label">Full Name</label>
