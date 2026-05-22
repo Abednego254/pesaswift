@@ -41,13 +41,14 @@ export default function ThemeToggle() {
         backdropFilter: 'blur(10px)',
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
+        gap: '6px',
         fontFamily: 'inherit',
         transition: 'all 0.2s ease'
       }}
       className="theme-toggle hover-lift"
     >
-      <span>{isDark ? '🌙 Midnight Cyberpunk' : '☀️ Eco Emerald'}</span>
+      <span>{isDark ? '🌙' : '☀️'}</span>
+      <span className="theme-toggle-text">{isDark ? 'Midnight Cyberpunk' : 'Eco Emerald'}</span>
     </button>
   );
 }

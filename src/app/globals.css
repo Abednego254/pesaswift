@@ -1007,4 +1007,117 @@ html.dark .modal-overlay {
   100% { transform: translateY(500px) rotate(360deg); opacity: 0; }
 }
 
+/* Mobile vertical stacking fixes for table & details to prevent horizontal scrolling */
+@media (max-width: 480px) {
+  .verification-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+    border-bottom: 1px dashed var(--border-color) !important;
+    padding-bottom: 10px !important;
+  }
+  .verification-row strong {
+    word-break: break-all !important;
+    font-size: 0.85rem !important;
+    text-align: left !important;
+    width: 100% !important;
+  }
+  .contract-grid {
+    grid-template-columns: 1fr !important;
+    gap: 15px !important;
+  }
+  .theme-toggle-text {
+    display: none !important;
+  }
+  .minimal-nav {
+    gap: 10px !important;
+  }
+}
+
+/* Recent Loans Toast Styling */
+.recent-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 1000;
+  min-width: 320px;
+  max-width: 380px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--card-shadow);
+  transform: translateX(-120%);
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+
+.recent-toast.show {
+  transform: translateX(0);
+}
+
+.toast-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(to bottom, var(--primary-color), var(--accent-color));
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+}
+
+.toast-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.toast-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+.toast-indicator {
+  color: var(--accent-color);
+  font-size: 0.75rem;
+  animation: pulse-animation 1.5s infinite;
+}
+
+.toast-name {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.toast-time {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+}
+
+.toast-desc {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.toast-desc span {
+  color: var(--primary-color);
+  font-weight: 700;
+}
+
+@media (max-width: 480px) {
+  .recent-toast {
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+
 
